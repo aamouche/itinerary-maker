@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Itinerary Maker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f0f1a;
+      --surface:   #1e1e2e;
+      --border:    #2d2d44;
+      --purple:    #a78bfa;
+      --blue:      #60a5fa;
+      --amber:     #f6ad55;
+      --green:     #68d391;
+      --muted:     #718096;
+      --text:      #e2e8f0;
+      --subtext:   #a0aec0;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── MODAL ── */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+    .modal-backdrop.hidden { display: none; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      width: 100%; max-width: 420px;
+    }
+    .modal h2 {
+      font-size: 1.2rem;
+      margin-bottom: .4rem;
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .modal p { font-size: .875rem; color: var(--subtext); margin-bottom: 1.25rem; }
+    .modal p a { color: var(--blue); }
+
+    .modal input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .65rem .9rem;
+      color: var(--text);
+      font-size: .95rem;
+      font-family: monospace;
+      margin-bottom: 1rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .modal input:focus { border-color: var(--purple); }
+
+    .modal-actions { display: flex; gap: .75rem; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      padding: .6rem 1.4rem;
+      border: none; border-radius: 999px;
+      font-weight: 700; font-size: .9rem; letter-spacing: .5px;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:hover { opacity: .88; transform: scale(1.03); }
+    .btn:active { transform: scale(.97); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      color: var(--bg);
+    }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--subtext);
+    }
+    .btn-ghost:hover { border-color: var(--purple); color: var(--purple); }
+
+    /* ── HEADER ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      font-size: 1.3rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .key-btn {
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: .4rem .8rem;
+      color: var(--muted); font-size: .8rem; cursor: pointer;
+      display: flex; align-items: center; gap: .4rem;
+      transition: border-color .2s, color .2s;
+    }
+    .key-btn:hover { border-color: var(--purple); color: var(--purple); }
+
+    /* ── MAIN ── */
+    main { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.5rem; }
+
+    /* ── FORM ── */
+    #form-section h1 {
+      font-size: 2rem; font-weight: 800;
+      margin-bottom: .5rem;
+    }
+    #form-section .subtitle {
+      color: var(--subtext); margin-bottom: 2rem; font-size: 1rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .form-full { grid-column: 1 / -1; }
+
+    label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: .35rem; letter-spacing: .5px; text-transform: uppercase; }
+
+    input[type="text"],
+    input[type="date"],
+    input[type="time"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .7rem 1rem;
+      color: var(--text);
+      font-size: .95rem;
+      outline: none;
+      transition: border-color .2s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="time"]::-webkit-calendar-picker-indicator {
+      filter: invert(.5);
+    }
+    input:focus { border-color: var(--purple); }
+    input.error { border-color: #fc8181; }
+
+    .error-msg {
+      font-size: .8rem;
+      color: #fc8181;
+      margin-top: .25rem;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    .form-actions { display: flex; justify-content: flex-end; }
+
+    /* ── LOADING ── */
+    #loading-section {
+      text-align: center;
+      padding: 4rem 0;
+      display: none;
+    }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--purple);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 1.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-section p { color: var(--subtext); font-size: 1rem; }
+
+    /* ── OUTPUT ── */
+    #output-section { display: none; }
+
+    .trip-header {
+      margin-bottom: 2rem;
+    }
+    .trip-header .destination {
+      font-size: 1.8rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: .3rem;
+    }
+    .trip-header .summary { color: var(--subtext); font-size: 1rem; }
+
+    /* ── DAY CARD ── */
+    .day-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin-bottom: 1.25rem;
+      overflow: hidden;
+    }
+    .day-header {
+      padding: .9rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .day-label { font-weight: 700; font-size: 1rem; }
+    .day-date { font-size: .8rem; color: var(--muted); }
+
+    .slot {
+      display: flex;
+      padding: .85rem 1.25rem;
+      gap: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .slot:last-child { border-bottom: none; }
+
+    .slot-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-top: .1rem;
+    }
+    .slot-icon.activity  { background: rgba(167,139,250,.15); }
+    .slot-icon.monument  { background: rgba(96,165,250,.15); }
+    .slot-icon.leisure   { background: rgba(104,211,145,.15); }
+    .slot-icon.food      { background: rgba(246,173,85,.15); }
+    .slot-icon.restaurant { background: rgba(246,173,85,.12); }
+    .slot-icon.morning-icon { background: rgba(167,139,250,.15); }
+    .slot-icon.evening-icon { background: rgba(104,211,145,.12); }
+
+    .slot-body { flex: 1; min-width: 0; }
+
+    .slot-time {
+      font-size: .7rem;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: var(--muted);
+      margin-bottom: .2rem;
+    }
+    .slot-title {
+      font-weight: 600;
+      font-size: .95rem;
+      margin-bottom: .2rem;
+    }
+    .slot-desc { font-size: .875rem; color: var(--subtext); }
+
+    .badge {
+      display: inline-block;
+      font-size: .65rem;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      padding: .15rem .5rem;
+      border-radius: 999px;
+      font-weight: 700;
+      margin-left: .5rem;
+      vertical-align: middle;
+    }
+    .badge-activity  { background: rgba(167,139,250,.2); color: var(--purple); }
+    .badge-monument  { background: rgba(96,165,250,.2);  color: var(--blue); }
+    .badge-leisure   { background: rgba(104,211,145,.2); color: var(--green); }
+    .badge-food      { background: rgba(246,173,85,.2);  color: var(--amber); }
+
+    .restaurant-slot .slot-title { color: var(--amber); }
+    .tip-callout {
+      margin-top: .35rem;
+      font-size: .8rem;
+      color: var(--muted);
+      background: rgba(246,173,85,.07);
+      border-left: 2px solid var(--amber);
+      padding: .25rem .6rem;
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* ── OUTPUT ACTIONS ── */
+    .output-actions {
+      display: flex; gap: 1rem; justify-content: flex-end;
+      margin-top: 2rem;
+    }
+
+    /* ── ERROR STATE ── */
+    .api-error {
+      background: rgba(252,129,129,.1);
+      border: 1px solid rgba(252,129,129,.3);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-top: 1rem;
+      display: none;
+    }
+    .api-error.visible { display: block; }
+    .api-error strong { color: #fc8181; }
+    .api-error p { font-size: .875rem; color: var(--subtext); margin-top: .35rem; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 520px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .form-full { grid-column: 1; }
+      header { padding: 1rem; }
+      main { padding: 1.5rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- API KEY MODAL -->
+<div class="modal-backdrop" id="key-modal">
+  <div class="modal">
+    <h2>Enter your Anthropic API Key</h2>
+    <p>Your key is stored locally in your browser and never sent anywhere except the Anthropic API. Get one at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.</p>
+    <input type="password" id="key-input" placeholder="sk-ant-..." autocomplete="off" />
+    <div id="key-error" class="error-msg">Please enter a valid API key (starts with sk-ant-)</div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveKey()">Save Key</button>
+      <button class="btn btn-ghost" id="modal-cancel-btn" onclick="hideKeyModal()" style="display:none">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <span class="logo">✈ Itinerary Maker</span>
+  <button class="key-btn" onclick="showKeyModal(true)">
+    <span>🔑</span> API Key
+  </button>
+</header>
+
+<main>
+
+  <!-- FORM -->
+  <section id="form-section">
+    <h1>Plan your trip</h1>
+    <p class="subtitle">Tell us where you're going and we'll build your perfect itinerary.</p>
+
+    <div class="form-grid">
+      <div class="form-full">
+        <label for="country">Country *</label>
+        <input type="text" id="country" placeholder="e.g. France, Japan, Italy" />
+        <div class="error-msg" id="country-err">Country is required.</div>
+      </div>
+
+      <div class="form-full">
+        <label for="city">City or Region <span style="color:var(--muted);text-transform:none;font-size:.75rem">(optional)</span></label>
+        <input type="text" id="city" placeholder="e.g. Paris, Kyoto, Amalfi Coast" />
+      </div>
+
+      <div>
+        <label for="arrival-date">Arrival Date *</label>
+        <input type="date" id="arrival-date" />
+        <div class="error-msg" id="arrival-date-err">Required.</div>
+      </div>
+
+      <div>
+        <label for="arrival-time">Arrival Time</label>
+        <input type="time" id="arrival-time" value="12:00" />
+      </div>
+
+      <div>
+        <label for="depart-date">Departure Date *</label>
+        <input type="date" id="depart-date" />
+        <div class="error-msg" id="depart-date-err">Required.</div>
+      </div>
+
+      <div>
+        <label for="depart-time">Departure Time</label>
+        <input type="time" id="depart-time" value="12:00" />
+      </div>
+    </div>
+
+    <div class="api-error" id="form-error">
+      <strong>Error generating itinerary</strong>
+      <p id="form-error-msg"></p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="generate()">Generate Itinerary →</button>
+    </div>
+  </section>
+
+  <!-- LOADING -->
+  <section id="loading-section">
+    <div class="spinner"></div>
+    <p>Crafting your itinerary…</p>
+  </section>
+
+  <!-- OUTPUT -->
+  <section id="output-section">
+    <div class="trip-header">
+      <div class="destination" id="out-destination"></div>
+      <div class="summary" id="out-summary"></div>
+    </div>
+    <div id="days-container"></div>
+    <div class="output-actions">
+      <button class="btn btn-ghost" onclick="reset()">← Plan Another Trip</button>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  // ── STATE ──
+  let apiKey = localStorage.getItem('itinerary_api_key') || '';
+
+  // ── INIT ──
+  (function init() {
+    if (!apiKey) showKeyModal(false);
+  })();
+
+  // ── KEY MODAL ──
+  function showKeyModal(cancellable) {
+    document.getElementById('key-modal').classList.remove('hidden');
+    document.getElementById('modal-cancel-btn').style.display = cancellable ? 'inline-flex' : 'none';
+    document.getElementById('key-input').value = apiKey;
+  }
+
+  function hideKeyModal() {
+    document.getElementById('key-modal').classList.add('hidden');
+    document.getElementById('key-error').classList.remove('visible');
+  }
+
+  function saveKey() {
+    const val = document.getElementById('key-input').value.trim();
+    if (!val.startsWith('sk-ant-') && !val.startsWith('sk-')) {
+      document.getElementById('key-error').classList.add('visible');
+      return;
+    }
+    apiKey = val;
+    localStorage.setItem('itinerary_api_key', val);
+    hideKeyModal();
+  }
+
+  document.getElementById('key-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveKey();
+  });
+
+  // ── FORM VALIDATION ──
+  function validate() {
+    let ok = true;
+    const country = document.getElementById('country').value.trim();
+    const arrDate = document.getElementById('arrival-date').value;
+    const depDate = document.getElementById('depart-date').value;
+
+    document.querySelectorAll('.error-msg').forEach(el => el.classList.remove('visible'));
+    document.querySelectorAll('input').forEach(el => el.classList.remove('error'));
+
+    if (!country) {
+      show('country-err'); mark('country'); ok = false;
+    }
+    if (!arrDate) {
+      show('arrival-date-err'); mark('arrival-date'); ok = false;
+    }
+    if (!depDate) {
+      show('depart-date-err'); mark('depart-date'); ok = false;
+    }
+    if (arrDate && depDate && depDate < arrDate) {
+      document.getElementById('depart-date-err').textContent = 'Departure must be after arrival.';
+      show('depart-date-err'); mark('depart-date'); ok = false;
+    }
+    return ok;
+  }
+
+  function show(id) { document.getElementById(id).classList.add('visible'); }
+  function mark(id) { document.getElementById(id).classList.add('error'); }
+
+  // ── PROMPT BUILDER ──
+  function buildMessages(country, city, arrDate, arrTime, depDate, depTime) {
+    const dest = city ? `${city}, ${country}` : country;
+    const nights = daysBetween(arrDate, depDate);
+
+    const system = `You are an expert travel planner. When asked to plan a trip, respond with ONLY valid JSON — no markdown, no explanation, no code fences. The JSON must strictly follow this schema:
+{
+  "destination": "City, Country",
+  "summary": "One engaging sentence describing this trip",
+  "days": [
+    {
+      "date": "YYYY-MM-DD",
+      "label": "Day N – Theme",
+      "morning":   { "title": "...", "description": "...", "type": "activity|monument|leisure|food" },
+      "lunch":     { "name": "Restaurant Name", "cuisine": "Cuisine type", "tip": "One short insider tip" },
+      "afternoon": { "title": "...", "description": "...", "type": "activity|monument|leisure|food" },
+      "dinner":    { "name": "Restaurant Name", "cuisine": "Cuisine type", "tip": "One short insider tip" },
+      "evening":   { "title": "...", "description": "..." }
+    }
+  ]
+}
+
+Rules:
+- Use real, well-known restaurants, monuments, and attractions popular with tourists.
+- Adjust Day 1 morning/lunch based on arrival time: if arriving after 14:00, morning should be "Arrival & Check-in".
+- Adjust the last day: if departing before 12:00 omit afternoon; if before 10:00 omit lunch too. Replace with "Departure" note.
+- Each day label should have a short evocative theme (e.g. "Day 2 – Art & History").
+- Descriptions should be 1-2 sentences, informative and enthusiastic.
+- Restaurant tips should be practical (best dish to order, booking advice, best time to visit).`;
+
+    const user = `Plan a ${nights}-night trip to ${dest}. Arrival: ${arrDate} at ${arrTime}. Departure: ${depDate} at ${depTime}. Return only the JSON.`;
+
+    return { system, user };
+  }
+
+  function daysBetween(a, b) {
+    return Math.round((new Date(b) - new Date(a)) / 86400000);
+  }
+
+  // ── API CALL ──
+  async function callClaude(system, user) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system,
+        messages: [{ role: 'user', content: user }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = err.error?.message || `HTTP ${res.status}`;
+      if (res.status === 401) throw new Error('Invalid API key. Please update it via the 🔑 button.');
+      throw new Error(msg);
+    }
+
+    const data = await res.json();
+    return data.content[0].text;
+  }
+
+  // ── MAIN FLOW ──
+  async function generate() {
+    if (!apiKey) { showKeyModal(false); return; }
+    if (!validate()) return;
+
+    const country   = document.getElementById('country').value.trim();
+    const city      = document.getElementById('city').value.trim();
+    const arrDate   = document.getElementById('arrival-date').value;
+    const arrTime   = document.getElementById('arrival-time').value || '12:00';
+    const depDate   = document.getElementById('depart-date').value;
+    const depTime   = document.getElementById('depart-time').value || '12:00';
+
+    hideError();
+    setScreen('loading');
+
+    try {
+      const { system, user } = buildMessages(country, city, arrDate, arrTime, depDate, depTime);
+      const raw = await callClaude(system, user);
+      const trip = JSON.parse(raw);
+      renderItinerary(trip);
+      setScreen('output');
+    } catch (e) {
+      setScreen('form');
+      showError(e.message || 'Something went wrong. Please try again.');
+    }
+  }
+
+  function reset() {
+    setScreen('form');
+    hideError();
+    document.getElementById('days-container').innerHTML = '';
+  }
+
+  // ── SCREENS ──
+  function setScreen(name) {
+    document.getElementById('form-section').style.display    = name === 'form'    ? 'block' : 'none';
+    document.getElementById('loading-section').style.display = name === 'loading' ? 'block' : 'none';
+    document.getElementById('output-section').style.display  = name === 'output'  ? 'block' : 'none';
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('form-error');
+    document.getElementById('form-error-msg').textContent = msg;
+    el.classList.add('visible');
+  }
+  function hideError() {
+    document.getElementById('form-error').classList.remove('visible');
+  }
+
+  // ── RENDER ──
+  function renderItinerary(trip) {
+    document.getElementById('out-destination').textContent = trip.destination;
+    document.getElementById('out-summary').textContent     = trip.summary || '';
+
+    const container = document.getElementById('days-container');
+    container.innerHTML = '';
+
+    (trip.days || []).forEach(day => {
+      container.appendChild(buildDayCard(day));
+    });
+
+    document.getElementById('output-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  const TYPE_ICONS = {
+    activity: '🎯', monument: '🏛', leisure: '🌅', food: '🍽', default: '📍'
+  };
+
+  function buildDayCard(day) {
+    const card = el('div', 'day-card');
+
+    // Header
+    const hdr = el('div', 'day-header');
+    const lbl = el('span', 'day-label'); lbl.textContent = day.label || day.date;
+    const dt  = el('span', 'day-date');  dt.textContent  = formatDate(day.date);
+    hdr.appendChild(lbl); hdr.appendChild(dt);
+    card.appendChild(hdr);
+
+    // Slots
+    if (day.morning)   card.appendChild(activitySlot('Morning',   day.morning));
+    if (day.lunch)     card.appendChild(restaurantSlot('Lunch',   day.lunch));
+    if (day.afternoon) card.appendChild(activitySlot('Afternoon', day.afternoon));
+    if (day.dinner)    card.appendChild(restaurantSlot('Dinner',  day.dinner));
+    if (day.evening && day.evening.title) card.appendChild(eveningSlot(day.evening));
+
+    return card;
+  }
+
+  function activitySlot(timeLabel, data) {
+    const type  = (data.type || 'activity').toLowerCase();
+    const icon  = TYPE_ICONS[type] || TYPE_ICONS.default;
+    const badge = `<span class="badge badge-${type}">${type}</span>`;
+
+    const s = el('div', 'slot');
+    s.innerHTML = `
+      <div class="slot-icon ${type}">${icon}</div>
+      <div class="slot-body">
+        <div class="slot-time">${timeLabel}</div>
+        <div class="slot-title">${esc(data.title)}${badge}</div>
+        <div class="slot-desc">${esc(data.description || '')}</div>
+      </div>`;
+    return s;
+  }
+
+  function restaurantSlot(timeLabel, data) {
+    const s = el('div', 'slot restaurant-slot');
+    s.innerHTML = `
+      <div class="slot-icon restaurant">🍽</div>
+      <div class="slot-body">
+        <div class="slot-time">${timeLabel}</div>
+        <div class="slot-title">${esc(data.name)}</div>
+        <div class="slot-desc">${esc(data.cuisine || '')}</div>
+        ${data.tip ? `<div class="tip-callout">💡 ${esc(data.tip)}</div>` : ''}
+      </div>`;
+    return s;
+  }
+
+  function eveningSlot(data) {
+    const s = el('div', 'slot');
+    s.innerHTML = `
+      <div class="slot-icon evening-icon">🌙</div>
+      <div class="slot-body">
+        <div class="slot-time">Evening</div>
+        <div class="slot-title">${esc(data.title)}</div>
+        <div class="slot-desc">${esc(data.description || '')}</div>
+      </div>`;
+    return s;
+  }
+
+  // ── HELPERS ──
+  function el(tag, cls) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    return e;
+  }
+
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function formatDate(str) {
+    if (!str) return '';
+    try {
+      return new Date(str + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    } catch { return str; }
+  }
+
+  // init screen state
+  setScreen('form');
+</script>
+</body>
+</html>
