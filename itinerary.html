@@ -4,20 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Itinerary Maker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #0f0f1a;
-      --surface:   #1e1e2e;
-      --border:    #2d2d44;
-      --purple:    #a78bfa;
-      --blue:      #60a5fa;
-      --amber:     #f6ad55;
-      --green:     #68d391;
-      --muted:     #718096;
-      --text:      #e2e8f0;
-      --subtext:   #a0aec0;
+      --bg:      #0f0f1a;
+      --surface: #1e1e2e;
+      --border:  #2d2d44;
+      --muted:   #718096;
+      --text:    #e2e8f0;
+      --sub:     #a0aec0;
+      --amber:   #f6ad55;
+      --red:     #fc8181;
+      --green:   #68d391;
+      /* Dynamic theme vars — overridden by JS after each generation */
+      --tp: #a78bfa;
+      --ts: #60a5fa;
+      --ta: #68d391;
     }
 
     body {
@@ -26,362 +30,395 @@
       font-family: 'Segoe UI', system-ui, sans-serif;
       color: var(--text);
       line-height: 1.6;
+      transition: background 1s ease;
     }
 
     /* ── MODAL ── */
     .modal-backdrop {
       position: fixed; inset: 0;
-      background: rgba(0,0,0,.7);
+      background: rgba(0,0,0,.75);
       display: flex; align-items: center; justify-content: center;
-      z-index: 100;
-      padding: 1rem;
+      z-index: 200; padding: 1rem;
     }
     .modal-backdrop.hidden { display: none; }
-
     .modal {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2rem;
+      border-radius: 16px; padding: 2rem;
       width: 100%; max-width: 420px;
     }
     .modal h2 {
-      font-size: 1.2rem;
-      margin-bottom: .4rem;
-      background: linear-gradient(135deg, var(--purple), var(--blue));
+      font-size: 1.2rem; margin-bottom: .4rem;
+      background: linear-gradient(135deg, var(--tp), var(--ts));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
-    .modal p { font-size: .875rem; color: var(--subtext); margin-bottom: 1.25rem; }
-    .modal p a { color: var(--blue); }
-
+    .modal p { font-size: .875rem; color: var(--sub); margin-bottom: 1.25rem; }
+    .modal p a { color: var(--ts); }
     .modal input {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: .65rem .9rem;
-      color: var(--text);
-      font-size: .95rem;
-      font-family: monospace;
-      margin-bottom: 1rem;
-      outline: none;
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: .65rem .9rem; color: var(--text);
+      font-size: .95rem; font-family: monospace;
+      margin-bottom: .5rem; outline: none;
       transition: border-color .2s;
     }
-    .modal input:focus { border-color: var(--purple); }
-
-    .modal-actions { display: flex; gap: .75rem; }
+    .modal input:focus { border-color: var(--tp); }
+    .modal-actions { display: flex; gap: .75rem; margin-top: .75rem; }
 
     /* ── BUTTONS ── */
     .btn {
-      padding: .6rem 1.4rem;
-      border: none; border-radius: 999px;
-      font-weight: 700; font-size: .9rem; letter-spacing: .5px;
-      cursor: pointer;
-      transition: opacity .2s, transform .1s;
+      padding: .6rem 1.4rem; border: none; border-radius: 999px;
+      font-weight: 700; font-size: .9rem; letter-spacing: .4px;
+      cursor: pointer; transition: opacity .2s, transform .1s;
+      display: inline-flex; align-items: center; gap: .4rem;
     }
-    .btn:hover { opacity: .88; transform: scale(1.03); }
+    .btn:hover  { opacity: .85; transform: scale(1.03); }
     .btn:active { transform: scale(.97); }
     .btn-primary {
-      background: linear-gradient(135deg, var(--purple), var(--blue));
-      color: var(--bg);
+      background: linear-gradient(135deg, var(--tp), var(--ts));
+      color: #0f0f1a;
     }
     .btn-ghost {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--subtext);
+      background: transparent; border: 1px solid var(--border); color: var(--sub);
     }
-    .btn-ghost:hover { border-color: var(--purple); color: var(--purple); }
+    .btn-ghost:hover { border-color: var(--tp); color: var(--tp); opacity: 1; }
+    .btn-sm { padding: .35rem .9rem; font-size: .8rem; }
 
     /* ── HEADER ── */
     header {
       border-bottom: 1px solid var(--border);
-      padding: 1.25rem 2rem;
+      padding: 1.1rem 2rem;
       display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; background: rgba(15,15,26,.92);
+      backdrop-filter: blur(12px); z-index: 100;
     }
     .logo {
-      font-size: 1.3rem;
-      font-weight: 800;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      background: linear-gradient(135deg, var(--purple), var(--blue));
+      font-size: 1.2rem; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+      background: linear-gradient(135deg, var(--tp), var(--ts));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
-    .key-btn {
-      background: none; border: 1px solid var(--border);
-      border-radius: 8px; padding: .4rem .8rem;
-      color: var(--muted); font-size: .8rem; cursor: pointer;
-      display: flex; align-items: center; gap: .4rem;
+    .header-actions { display: flex; gap: .5rem; }
+    .hbtn {
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      padding: .35rem .75rem; color: var(--muted); font-size: .8rem; cursor: pointer;
+      display: flex; align-items: center; gap: .35rem;
       transition: border-color .2s, color .2s;
     }
-    .key-btn:hover { border-color: var(--purple); color: var(--purple); }
+    .hbtn:hover { border-color: var(--tp); color: var(--tp); }
+    .hbtn.hidden { display: none; }
 
     /* ── MAIN ── */
-    main { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.5rem; }
+    main { max-width: 760px; margin: 0 auto; padding: 2.5rem 1.5rem; }
 
     /* ── FORM ── */
-    #form-section h1 {
-      font-size: 2rem; font-weight: 800;
-      margin-bottom: .5rem;
-    }
-    #form-section .subtitle {
-      color: var(--subtext); margin-bottom: 2rem; font-size: 1rem;
-    }
-
+    #form-section h1 { font-size: 2rem; font-weight: 800; margin-bottom: .4rem; }
+    #form-section .subtitle { color: var(--sub); margin-bottom: 2rem; }
     .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem 1.25rem;
-      margin-bottom: 1.5rem;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 1rem 1.25rem; margin-bottom: 1.5rem;
     }
     .form-full { grid-column: 1 / -1; }
-
-    label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: .35rem; letter-spacing: .5px; text-transform: uppercase; }
-
-    input[type="text"],
-    input[type="date"],
-    input[type="time"] {
-      width: 100%;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: .7rem 1rem;
-      color: var(--text);
-      font-size: .95rem;
-      outline: none;
-      transition: border-color .2s;
-      appearance: none;
-      -webkit-appearance: none;
+    label {
+      display: block; font-size: .75rem; color: var(--muted);
+      margin-bottom: .35rem; letter-spacing: .6px; text-transform: uppercase;
+    }
+    input[type="text"], input[type="date"], input[type="time"] {
+      width: 100%; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: .7rem 1rem; color: var(--text); font-size: .95rem;
+      outline: none; transition: border-color .2s;
+      appearance: none; -webkit-appearance: none;
     }
     input[type="date"]::-webkit-calendar-picker-indicator,
-    input[type="time"]::-webkit-calendar-picker-indicator {
-      filter: invert(.5);
+    input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
+    input:focus { border-color: var(--tp); }
+    input.err  { border-color: var(--red); }
+    .err-msg { font-size: .8rem; color: var(--red); margin-top: .25rem; display: none; }
+    .err-msg.show { display: block; }
+    .form-actions { display: flex; justify-content: flex-end; margin-top: .5rem; }
+    .api-error {
+      background: rgba(252,129,129,.08); border: 1px solid rgba(252,129,129,.25);
+      border-radius: 12px; padding: 1.1rem 1.4rem; margin-top: 1rem; display: none;
     }
-    input:focus { border-color: var(--purple); }
-    input.error { border-color: #fc8181; }
-
-    .error-msg {
-      font-size: .8rem;
-      color: #fc8181;
-      margin-top: .25rem;
-      display: none;
-    }
-    .error-msg.visible { display: block; }
-
-    .form-actions { display: flex; justify-content: flex-end; }
+    .api-error.show { display: block; }
+    .api-error strong { color: var(--red); }
+    .api-error p { font-size: .875rem; color: var(--sub); margin-top: .3rem; }
 
     /* ── LOADING ── */
-    #loading-section {
-      text-align: center;
-      padding: 4rem 0;
-      display: none;
-    }
+    #loading-section { text-align: center; padding: 5rem 0; display: none; }
     .spinner {
       width: 48px; height: 48px;
-      border: 3px solid var(--border);
-      border-top-color: var(--purple);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
+      border: 3px solid var(--border); border-top-color: var(--tp);
+      border-radius: 50%; animation: spin .8s linear infinite;
       margin: 0 auto 1.5rem;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #loading-section p { color: var(--subtext); font-size: 1rem; }
+    #loading-section p { color: var(--sub); }
 
     /* ── OUTPUT ── */
     #output-section { display: none; }
 
-    .trip-header {
-      margin-bottom: 2rem;
-    }
-    .trip-header .destination {
-      font-size: 1.8rem; font-weight: 800;
-      background: linear-gradient(135deg, var(--purple), var(--blue));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: .3rem;
-    }
-    .trip-header .summary { color: var(--subtext); font-size: 1rem; }
-
-    /* ── DAY CARD ── */
-    .day-card {
-      background: var(--surface);
+    .trip-hero {
+      margin-bottom: 2rem; padding: 2rem;
+      background: var(--surface); border-radius: 20px;
       border: 1px solid var(--border);
-      border-radius: 16px;
-      margin-bottom: 1.25rem;
-      overflow: hidden;
+      position: relative; overflow: hidden;
+    }
+    .trip-hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, var(--tp-raw, rgba(167,139,250,.12)) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .trip-hero-flag { font-size: 3rem; line-height: 1; margin-bottom: .75rem; }
+    .trip-hero-dest {
+      font-size: 2.2rem; font-weight: 800; margin-bottom: .2rem;
+      background: linear-gradient(135deg, var(--tp), var(--ts));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .trip-hero-vibe {
+      font-size: .8rem; text-transform: uppercase; letter-spacing: 2px;
+      color: var(--muted); margin-bottom: .5rem;
+    }
+    .trip-hero-summary { color: var(--sub); font-size: 1rem; }
+
+    /* ── BUDGET CARD ── */
+    .budget-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 1.4rem; margin-bottom: 1.25rem;
+    }
+    .budget-title {
+      font-size: .75rem; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--muted); margin-bottom: 1rem;
+    }
+    .budget-tiers { display: grid; grid-template-columns: repeat(3,1fr); gap: .75rem; margin-bottom: 1rem; }
+    .budget-tier {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 12px; padding: .8rem; text-align: center;
+    }
+    .budget-tier-name { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: .3rem; }
+    .budget-tier-daily { font-size: 1.3rem; font-weight: 700; }
+    .budget-tier-total { font-size: .75rem; color: var(--muted); margin-top: .15rem; }
+    .budget-tier.mid .budget-tier-daily  { color: var(--tp); }
+    .budget-tier.budget .budget-tier-daily { color: var(--green); }
+    .budget-tier.luxury .budget-tier-daily { color: var(--amber); }
+    .budget-tips { border-top: 1px solid var(--border); padding-top: .85rem; }
+    .budget-tips-label { font-size: .7rem; color: var(--muted); margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .8px; }
+    .budget-tips ul { list-style: none; display: flex; flex-direction: column; gap: .3rem; }
+    .budget-tips li { font-size: .85rem; color: var(--sub); padding-left: 1rem; position: relative; }
+    .budget-tips li::before { content: '💡'; position: absolute; left: -4px; font-size: .75rem; }
+
+    /* ── MAP ── */
+    .map-section { margin-bottom: 1.25rem; }
+    .map-toggle {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: .7rem 1.1rem; color: var(--sub);
+      font-size: .875rem; cursor: pointer; text-align: left;
+      display: flex; align-items: center; justify-content: space-between;
+      transition: border-color .2s, color .2s;
+    }
+    .map-toggle:hover { border-color: var(--tp); color: var(--tp); }
+    .map-toggle .arrow { transition: transform .25s; }
+    .map-toggle.open .arrow { transform: rotate(180deg); }
+    #map-container {
+      height: 360px; border-radius: 0 0 12px 12px;
+      border: 1px solid var(--border); border-top: none;
+      overflow: hidden; display: none;
+    }
+    #map-container.open { display: block; }
+    #map { height: 100%; }
+
+    /* ── DAY CARDS ── */
+    .day-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; margin-bottom: 1.25rem; overflow: hidden;
     }
     .day-header {
-      padding: .9rem 1.25rem;
-      border-bottom: 1px solid var(--border);
+      padding: .85rem 1.25rem; border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--tp) 10%, transparent), transparent);
     }
-    .day-label { font-weight: 700; font-size: 1rem; }
-    .day-date { font-size: .8rem; color: var(--muted); }
+    .day-label { font-weight: 700; font-size: .95rem; }
+    .day-date  { font-size: .78rem; color: var(--muted); }
 
+    /* ── SLOTS ── */
     .slot {
-      display: flex;
-      padding: .85rem 1.25rem;
-      gap: 1rem;
+      display: flex; padding: .85rem 1.25rem; gap: 1rem;
       border-bottom: 1px solid var(--border);
+      position: relative;
     }
     .slot:last-child { border-bottom: none; }
-
     .slot-icon {
-      width: 36px; height: 36px;
-      border-radius: 10px;
+      width: 36px; height: 36px; border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem;
-      flex-shrink: 0;
-      margin-top: .1rem;
+      font-size: 1.05rem; flex-shrink: 0; margin-top: .1rem;
     }
-    .slot-icon.activity  { background: rgba(167,139,250,.15); }
-    .slot-icon.monument  { background: rgba(96,165,250,.15); }
-    .slot-icon.leisure   { background: rgba(104,211,145,.15); }
-    .slot-icon.food      { background: rgba(246,173,85,.15); }
-    .slot-icon.restaurant { background: rgba(246,173,85,.12); }
-    .slot-icon.morning-icon { background: rgba(167,139,250,.15); }
-    .slot-icon.evening-icon { background: rgba(104,211,145,.12); }
+    .si-activity { background: rgba(167,139,250,.15); }
+    .si-monument { background: rgba(96,165,250,.15); }
+    .si-leisure  { background: rgba(104,211,145,.15); }
+    .si-food     { background: rgba(246,173,85,.15); }
+    .si-rest     { background: rgba(246,173,85,.12); }
+    .si-eve      { background: rgba(104,211,145,.1); }
 
     .slot-body { flex: 1; min-width: 0; }
-
-    .slot-time {
-      font-size: .7rem;
-      text-transform: uppercase;
-      letter-spacing: .8px;
-      color: var(--muted);
-      margin-bottom: .2rem;
-    }
-    .slot-title {
-      font-weight: 600;
-      font-size: .95rem;
-      margin-bottom: .2rem;
-    }
-    .slot-desc { font-size: .875rem; color: var(--subtext); }
-
+    .slot-time { font-size: .7rem; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: .18rem; }
+    .slot-title { font-weight: 600; font-size: .93rem; margin-bottom: .18rem; }
+    .slot-desc  { font-size: .855rem; color: var(--sub); }
     .badge {
-      display: inline-block;
-      font-size: .65rem;
-      text-transform: uppercase;
-      letter-spacing: .6px;
-      padding: .15rem .5rem;
-      border-radius: 999px;
-      font-weight: 700;
-      margin-left: .5rem;
+      display: inline-block; font-size: .62rem; text-transform: uppercase; letter-spacing: .5px;
+      padding: .12rem .45rem; border-radius: 999px; font-weight: 700; margin-left: .45rem;
       vertical-align: middle;
     }
-    .badge-activity  { background: rgba(167,139,250,.2); color: var(--purple); }
-    .badge-monument  { background: rgba(96,165,250,.2);  color: var(--blue); }
-    .badge-leisure   { background: rgba(104,211,145,.2); color: var(--green); }
-    .badge-food      { background: rgba(246,173,85,.2);  color: var(--amber); }
-
-    .restaurant-slot .slot-title { color: var(--amber); }
+    .b-activity { background: rgba(167,139,250,.2); color: #a78bfa; }
+    .b-monument { background: rgba(96,165,250,.2);  color: #60a5fa; }
+    .b-leisure  { background: rgba(104,211,145,.2); color: #68d391; }
+    .b-food     { background: rgba(246,173,85,.2);  color: #f6ad55; }
+    .rest-title { color: var(--amber); }
     .tip-callout {
-      margin-top: .35rem;
-      font-size: .8rem;
-      color: var(--muted);
-      background: rgba(246,173,85,.07);
-      border-left: 2px solid var(--amber);
-      padding: .25rem .6rem;
-      border-radius: 0 4px 4px 0;
+      margin-top: .3rem; font-size: .8rem; color: var(--muted);
+      background: rgba(246,173,85,.07); border-left: 2px solid var(--amber);
+      padding: .22rem .55rem; border-radius: 0 4px 4px 0;
     }
+
+    /* ── EDIT ── */
+    .edit-btn {
+      position: absolute; top: .7rem; right: .9rem;
+      background: none; border: 1px solid transparent;
+      border-radius: 7px; padding: .25rem .5rem;
+      color: var(--muted); font-size: .75rem; cursor: pointer;
+      opacity: 0; transition: opacity .15s, border-color .15s, color .15s;
+    }
+    .slot:hover .edit-btn { opacity: 1; }
+    .edit-btn:hover { border-color: var(--tp); color: var(--tp); opacity: 1; }
+
+    .edit-form {
+      padding: .9rem 1.25rem .9rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(167,139,250,.04);
+      display: none;
+    }
+    .edit-form.open { display: block; }
+    .edit-row { margin-bottom: .6rem; }
+    .edit-row label { font-size: .7rem; color: var(--muted); margin-bottom: .2rem; }
+    .edit-row input, .edit-row textarea {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: .5rem .75rem; color: var(--text); font-size: .875rem;
+      outline: none; font-family: inherit;
+      transition: border-color .2s;
+    }
+    .edit-row textarea { resize: vertical; min-height: 58px; }
+    .edit-row input:focus, .edit-row textarea:focus { border-color: var(--tp); }
+    .edit-actions { display: flex; gap: .5rem; margin-top: .65rem; }
 
     /* ── OUTPUT ACTIONS ── */
     .output-actions {
-      display: flex; gap: 1rem; justify-content: flex-end;
-      margin-top: 2rem;
+      display: flex; flex-wrap: wrap; gap: .75rem; justify-content: flex-end;
+      margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
     }
 
-    /* ── ERROR STATE ── */
-    .api-error {
-      background: rgba(252,129,129,.1);
-      border: 1px solid rgba(252,129,129,.3);
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      margin-top: 1rem;
-      display: none;
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 999px; padding: .55rem 1.4rem;
+      font-size: .875rem; color: var(--text); pointer-events: none;
+      opacity: 0; transition: opacity .25s, transform .25s;
+      z-index: 300;
     }
-    .api-error.visible { display: block; }
-    .api-error strong { color: #fc8181; }
-    .api-error p { font-size: .875rem; color: var(--subtext); margin-top: .35rem; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* ── RESPONSIVE ── */
     @media (max-width: 520px) {
       .form-grid { grid-template-columns: 1fr; }
       .form-full { grid-column: 1; }
-      header { padding: 1rem; }
+      header { padding: .9rem 1rem; }
       main { padding: 1.5rem 1rem; }
+      .budget-tiers { grid-template-columns: 1fr; }
+      .trip-hero-dest { font-size: 1.6rem; }
+      .output-actions { justify-content: stretch; }
+      .output-actions .btn { flex: 1; justify-content: center; }
+    }
+
+    /* ── PRINT ── */
+    @media print {
+      header .header-actions, .hbtn, .edit-btn, .edit-form,
+      .output-actions, .map-section, #loading-section, #form-section { display: none !important; }
+      body { background: #fff; color: #111; }
+      .trip-hero, .budget-card, .day-card { border: 1px solid #ccc; break-inside: avoid; }
+      .trip-hero-dest { -webkit-text-fill-color: #111; background: none; }
+      .slot-desc, .sub, .day-date { color: #555; }
+      .day-header { background: #f5f5f5; }
     }
   </style>
 </head>
 <body>
 
-<!-- API KEY MODAL -->
-<div class="modal-backdrop" id="key-modal">
+<!-- ── API KEY MODAL ── -->
+<div class="modal-backdrop hidden" id="key-modal">
   <div class="modal">
-    <h2>Enter your Anthropic API Key</h2>
-    <p>Your key is stored locally in your browser and never sent anywhere except the Anthropic API. Get one at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.</p>
+    <h2>🔑 Anthropic API Key</h2>
+    <p>Stored only in your browser. Never shared. Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.</p>
     <input type="password" id="key-input" placeholder="sk-ant-..." autocomplete="off" />
-    <div id="key-error" class="error-msg">Please enter a valid API key (starts with sk-ant-)</div>
+    <div id="key-err" class="err-msg">Please enter a valid key (starts with sk-).</div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="saveKey()">Save Key</button>
-      <button class="btn btn-ghost" id="modal-cancel-btn" onclick="hideKeyModal()" style="display:none">Cancel</button>
+      <button class="btn btn-primary" onclick="saveKey()">Save</button>
+      <button class="btn btn-ghost" id="modal-cancel" onclick="hideKeyModal()" style="display:none">Cancel</button>
     </div>
   </div>
 </div>
 
-<!-- HEADER -->
+<!-- ── HEADER ── -->
 <header>
   <span class="logo">✈ Itinerary Maker</span>
-  <button class="key-btn" onclick="showKeyModal(true)">
-    <span>🔑</span> API Key
-  </button>
+  <div class="header-actions">
+    <button class="hbtn hidden" id="btn-share"  onclick="copyShareLink()">🔗 Share</button>
+    <button class="hbtn hidden" id="btn-print"  onclick="window.print()">🖨 Print</button>
+    <button class="hbtn" onclick="showKeyModal(true)">🔑 API Key</button>
+  </div>
 </header>
+
+<!-- ── TOAST ── -->
+<div class="toast" id="toast"></div>
 
 <main>
 
   <!-- FORM -->
   <section id="form-section">
     <h1>Plan your trip</h1>
-    <p class="subtitle">Tell us where you're going and we'll build your perfect itinerary.</p>
-
+    <p class="subtitle">Enter your destination and dates — we'll craft the perfect itinerary.</p>
     <div class="form-grid">
       <div class="form-full">
         <label for="country">Country *</label>
-        <input type="text" id="country" placeholder="e.g. France, Japan, Italy" />
-        <div class="error-msg" id="country-err">Country is required.</div>
+        <input type="text" id="country" placeholder="e.g. France, Japan, Morocco" />
+        <div class="err-msg" id="country-err">Country is required.</div>
       </div>
-
       <div class="form-full">
-        <label for="city">City or Region <span style="color:var(--muted);text-transform:none;font-size:.75rem">(optional)</span></label>
-        <input type="text" id="city" placeholder="e.g. Paris, Kyoto, Amalfi Coast" />
+        <label for="city">City or Region <span style="font-size:.72rem;text-transform:none;color:var(--muted)">(optional)</span></label>
+        <input type="text" id="city" placeholder="e.g. Paris, Kyoto, Marrakech" />
       </div>
-
       <div>
-        <label for="arrival-date">Arrival Date *</label>
-        <input type="date" id="arrival-date" />
-        <div class="error-msg" id="arrival-date-err">Required.</div>
+        <label for="arr-date">Arrival Date *</label>
+        <input type="date" id="arr-date" />
+        <div class="err-msg" id="arr-date-err">Required.</div>
       </div>
-
       <div>
-        <label for="arrival-time">Arrival Time</label>
-        <input type="time" id="arrival-time" value="12:00" />
+        <label for="arr-time">Arrival Time</label>
+        <input type="time" id="arr-time" value="12:00" />
       </div>
-
       <div>
-        <label for="depart-date">Departure Date *</label>
-        <input type="date" id="depart-date" />
-        <div class="error-msg" id="depart-date-err">Required.</div>
+        <label for="dep-date">Departure Date *</label>
+        <input type="date" id="dep-date" />
+        <div class="err-msg" id="dep-date-err">Required.</div>
       </div>
-
       <div>
-        <label for="depart-time">Departure Time</label>
-        <input type="time" id="depart-time" value="12:00" />
+        <label for="dep-time">Departure Time</label>
+        <input type="time" id="dep-time" value="12:00" />
       </div>
     </div>
-
     <div class="api-error" id="form-error">
-      <strong>Error generating itinerary</strong>
+      <strong>Generation failed</strong>
       <p id="form-error-msg"></p>
     </div>
-
     <div class="form-actions">
       <button class="btn btn-primary" onclick="generate()">Generate Itinerary →</button>
     </div>
@@ -390,305 +427,572 @@
   <!-- LOADING -->
   <section id="loading-section">
     <div class="spinner"></div>
-    <p>Crafting your itinerary…</p>
+    <p>Crafting your itinerary with AI…</p>
   </section>
 
   <!-- OUTPUT -->
   <section id="output-section">
-    <div class="trip-header">
-      <div class="destination" id="out-destination"></div>
-      <div class="summary" id="out-summary"></div>
+
+    <!-- Hero -->
+    <div class="trip-hero">
+      <div class="trip-hero-flag" id="out-flag"></div>
+      <div class="trip-hero-vibe" id="out-vibe"></div>
+      <div class="trip-hero-dest" id="out-dest"></div>
+      <div class="trip-hero-summary" id="out-summary"></div>
     </div>
+
+    <!-- Budget -->
+    <div class="budget-card" id="budget-card"></div>
+
+    <!-- Map -->
+    <div class="map-section">
+      <button class="map-toggle" id="map-toggle" onclick="toggleMap()">
+        <span>🗺 Show map</span><span class="arrow">▼</span>
+      </button>
+      <div id="map-container"><div id="map"></div></div>
+    </div>
+
+    <!-- Days -->
     <div id="days-container"></div>
+
+    <!-- Actions -->
     <div class="output-actions">
+      <button class="btn btn-ghost" onclick="copyShareLink()">🔗 Copy Share Link</button>
+      <button class="btn btn-ghost" onclick="window.print()">🖨 Print / Export</button>
       <button class="btn btn-ghost" onclick="reset()">← Plan Another Trip</button>
     </div>
+
   </section>
 
 </main>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  // ── STATE ──
-  let apiKey = localStorage.getItem('itinerary_api_key') || '';
+// ── STATE ──
+let apiKey   = localStorage.getItem('itinerary_api_key') || '';
+let tripData = null;
+let leafMap  = null;
+let mapOpen  = false;
 
-  // ── INIT ──
-  (function init() {
-    if (!apiKey) showKeyModal(false);
-  })();
-
-  // ── KEY MODAL ──
-  function showKeyModal(cancellable) {
-    document.getElementById('key-modal').classList.remove('hidden');
-    document.getElementById('modal-cancel-btn').style.display = cancellable ? 'inline-flex' : 'none';
-    document.getElementById('key-input').value = apiKey;
+// ── INIT ──
+(function init() {
+  if (!apiKey) showKeyModal(false);
+  // Restore from share link
+  if (window.location.hash.length > 1) {
+    try {
+      const raw  = decodeURIComponent(window.location.hash.slice(1));
+      const trip = JSON.parse(atob(raw));
+      tripData   = trip;
+      applyTheme(trip.theme || {});
+      renderItinerary(trip);
+      setScreen('output');
+    } catch (_) { /* bad hash – ignore */ }
   }
+})();
 
-  function hideKeyModal() {
-    document.getElementById('key-modal').classList.add('hidden');
-    document.getElementById('key-error').classList.remove('visible');
+// ── KEY MODAL ──
+function showKeyModal(cancellable) {
+  document.getElementById('key-modal').classList.remove('hidden');
+  document.getElementById('modal-cancel').style.display = cancellable ? 'inline-flex' : 'none';
+  document.getElementById('key-input').value = apiKey;
+}
+function hideKeyModal() {
+  document.getElementById('key-modal').classList.add('hidden');
+  document.getElementById('key-err').classList.remove('show');
+}
+function saveKey() {
+  const v = document.getElementById('key-input').value.trim();
+  if (!v.startsWith('sk-')) { document.getElementById('key-err').classList.add('show'); return; }
+  apiKey = v;
+  localStorage.setItem('itinerary_api_key', v);
+  hideKeyModal();
+}
+document.getElementById('key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveKey(); });
+
+// ── THEME ──
+function applyTheme(theme) {
+  if (!theme || !theme.primary) return;
+  const r = document.documentElement;
+  r.style.setProperty('--tp', theme.primary);
+  r.style.setProperty('--ts', theme.secondary || theme.primary);
+  r.style.setProperty('--ta', theme.accent    || theme.primary);
+  // Subtle country-color radial glow in background
+  const p = theme.primary, a = theme.accent || theme.secondary || theme.primary;
+  document.body.style.background = [
+    `radial-gradient(ellipse 70% 50% at 0% 0%, ${hex2rgba(p, .13)} 0%, transparent 65%)`,
+    `radial-gradient(ellipse 60% 40% at 100% 100%, ${hex2rgba(a, .10)} 0%, transparent 60%)`,
+    `#0f0f1a`
+  ].join(', ');
+}
+
+function hex2rgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16),
+        g = parseInt(hex.slice(3,5),16),
+        b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ── FORM VALIDATION ──
+function validate() {
+  let ok = true;
+  document.querySelectorAll('.err-msg').forEach(e => e.classList.remove('show'));
+  document.querySelectorAll('input').forEach(e => e.classList.remove('err'));
+  const country = document.getElementById('country').value.trim();
+  const arrDate = document.getElementById('arr-date').value;
+  const depDate = document.getElementById('dep-date').value;
+  if (!country)  { showErr('country-err'); markErr('country');   ok = false; }
+  if (!arrDate)  { showErr('arr-date-err'); markErr('arr-date'); ok = false; }
+  if (!depDate)  { showErr('dep-date-err'); markErr('dep-date'); ok = false; }
+  if (arrDate && depDate && depDate < arrDate) {
+    document.getElementById('dep-date-err').textContent = 'Departure must be after arrival.';
+    showErr('dep-date-err'); markErr('dep-date'); ok = false;
   }
+  return ok;
+}
+function showErr(id) { document.getElementById(id).classList.add('show'); }
+function markErr(id) { document.getElementById(id).classList.add('err'); }
 
-  function saveKey() {
-    const val = document.getElementById('key-input').value.trim();
-    if (!val.startsWith('sk-ant-') && !val.startsWith('sk-')) {
-      document.getElementById('key-error').classList.add('visible');
-      return;
-    }
-    apiKey = val;
-    localStorage.setItem('itinerary_api_key', val);
-    hideKeyModal();
-  }
+// ── PROMPT ──
+function buildMessages(country, city, arrDate, arrTime, depDate, depTime) {
+  const dest   = city ? `${city}, ${country}` : country;
+  const nights = daysBetween(arrDate, depDate);
 
-  document.getElementById('key-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') saveKey();
-  });
-
-  // ── FORM VALIDATION ──
-  function validate() {
-    let ok = true;
-    const country = document.getElementById('country').value.trim();
-    const arrDate = document.getElementById('arrival-date').value;
-    const depDate = document.getElementById('depart-date').value;
-
-    document.querySelectorAll('.error-msg').forEach(el => el.classList.remove('visible'));
-    document.querySelectorAll('input').forEach(el => el.classList.remove('error'));
-
-    if (!country) {
-      show('country-err'); mark('country'); ok = false;
-    }
-    if (!arrDate) {
-      show('arrival-date-err'); mark('arrival-date'); ok = false;
-    }
-    if (!depDate) {
-      show('depart-date-err'); mark('depart-date'); ok = false;
-    }
-    if (arrDate && depDate && depDate < arrDate) {
-      document.getElementById('depart-date-err').textContent = 'Departure must be after arrival.';
-      show('depart-date-err'); mark('depart-date'); ok = false;
-    }
-    return ok;
-  }
-
-  function show(id) { document.getElementById(id).classList.add('visible'); }
-  function mark(id) { document.getElementById(id).classList.add('error'); }
-
-  // ── PROMPT BUILDER ──
-  function buildMessages(country, city, arrDate, arrTime, depDate, depTime) {
-    const dest = city ? `${city}, ${country}` : country;
-    const nights = daysBetween(arrDate, depDate);
-
-    const system = `You are an expert travel planner. When asked to plan a trip, respond with ONLY valid JSON — no markdown, no explanation, no code fences. The JSON must strictly follow this schema:
+  const system = `You are an expert travel planner. Respond ONLY with valid JSON — no markdown, no code fences, no explanation. Use this exact schema:
 {
   "destination": "City, Country",
-  "summary": "One engaging sentence describing this trip",
+  "summary": "One vivid sentence evoking this trip",
+  "theme": {
+    "primary":   "#RRGGBB (vibrant color from country flag/culture, must look good on dark #0f0f1a background)",
+    "secondary": "#RRGGBB (second distinctive country color)",
+    "accent":    "#RRGGBB (third accent, contrasting)",
+    "flag":      "flag emoji",
+    "vibe":      "2-4 word evocative description e.g. Romantic & Sophisticated"
+  },
+  "budget": {
+    "currency": "currency name",
+    "symbol":   "€",
+    "per_day":  { "budget": 60, "mid": 130, "luxury": 300 },
+    "tips":     ["tip1","tip2","tip3"]
+  },
   "days": [
     {
       "date": "YYYY-MM-DD",
       "label": "Day N – Theme",
-      "morning":   { "title": "...", "description": "...", "type": "activity|monument|leisure|food" },
-      "lunch":     { "name": "Restaurant Name", "cuisine": "Cuisine type", "tip": "One short insider tip" },
-      "afternoon": { "title": "...", "description": "...", "type": "activity|monument|leisure|food" },
-      "dinner":    { "name": "Restaurant Name", "cuisine": "Cuisine type", "tip": "One short insider tip" },
-      "evening":   { "title": "...", "description": "..." }
+      "morning":   { "title":"","description":"","type":"activity|monument|leisure|food","lat":0.0,"lng":0.0 },
+      "lunch":     { "name":"","cuisine":"","tip":"","lat":0.0,"lng":0.0 },
+      "afternoon": { "title":"","description":"","type":"activity|monument|leisure|food","lat":0.0,"lng":0.0 },
+      "dinner":    { "name":"","cuisine":"","tip":"","lat":0.0,"lng":0.0 },
+      "evening":   { "title":"","description":"" }
     }
   ]
 }
-
 Rules:
-- Use real, well-known restaurants, monuments, and attractions popular with tourists.
-- Adjust Day 1 morning/lunch based on arrival time: if arriving after 14:00, morning should be "Arrival & Check-in".
-- Adjust the last day: if departing before 12:00 omit afternoon; if before 10:00 omit lunch too. Replace with "Departure" note.
-- Each day label should have a short evocative theme (e.g. "Day 2 – Art & History").
-- Descriptions should be 1-2 sentences, informative and enthusiastic.
-- Restaurant tips should be practical (best dish to order, booking advice, best time to visit).`;
+- Use REAL popular tourist restaurants, monuments and attractions with accurate coordinates.
+- theme.primary/secondary/accent must be bright/vibrant and readable on a very dark background.
+- Arrival day morning: if arriving after 14:00 use "Arrival & Hotel Check-in" for morning.
+- Departure day: omit afternoon if departing before 12:00; omit lunch too if before 10:00.
+- Day labels must have evocative themes e.g. "Day 2 – Art & Café Culture".
+- Descriptions 1-2 sentences, enthusiastic. Restaurant tips: best dish, booking advice, or timing.
+- lat/lng must be accurate real-world coordinates for each location.`;
 
-    const user = `Plan a ${nights}-night trip to ${dest}. Arrival: ${arrDate} at ${arrTime}. Departure: ${depDate} at ${depTime}. Return only the JSON.`;
+  const user = `Plan a ${nights}-night trip to ${dest}. Arrival: ${arrDate} at ${arrTime}. Departure: ${depDate} at ${depTime}. Return only the JSON.`;
+  return { system, user };
+}
 
-    return { system, user };
+function daysBetween(a, b) {
+  return Math.round((new Date(b) - new Date(a)) / 86400000);
+}
+
+// ── API ──
+async function callClaude(system, user) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system,
+      messages: [{ role: 'user', content: user }]
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error('Invalid API key. Update it via the 🔑 button.');
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
   }
+  const data = await res.json();
+  return data.content[0].text;
+}
 
-  function daysBetween(a, b) {
-    return Math.round((new Date(b) - new Date(a)) / 86400000);
-  }
+function parseJSON(raw) {
+  // Strip optional markdown code fences
+  const s = raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
+  return JSON.parse(s);
+}
 
-  // ── API CALL ──
-  async function callClaude(system, user) {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system,
-        messages: [{ role: 'user', content: user }]
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = err.error?.message || `HTTP ${res.status}`;
-      if (res.status === 401) throw new Error('Invalid API key. Please update it via the 🔑 button.');
-      throw new Error(msg);
-    }
-
-    const data = await res.json();
-    return data.content[0].text;
-  }
-
-  // ── MAIN FLOW ──
-  async function generate() {
-    if (!apiKey) { showKeyModal(false); return; }
-    if (!validate()) return;
-
-    const country   = document.getElementById('country').value.trim();
-    const city      = document.getElementById('city').value.trim();
-    const arrDate   = document.getElementById('arrival-date').value;
-    const arrTime   = document.getElementById('arrival-time').value || '12:00';
-    const depDate   = document.getElementById('depart-date').value;
-    const depTime   = document.getElementById('depart-time').value || '12:00';
-
-    hideError();
-    setScreen('loading');
-
-    try {
-      const { system, user } = buildMessages(country, city, arrDate, arrTime, depDate, depTime);
-      const raw = await callClaude(system, user);
-      const trip = JSON.parse(raw);
-      renderItinerary(trip);
-      setScreen('output');
-    } catch (e) {
-      setScreen('form');
-      showError(e.message || 'Something went wrong. Please try again.');
-    }
-  }
-
-  function reset() {
+// ── MAIN FLOW ──
+async function generate() {
+  if (!apiKey) { showKeyModal(false); return; }
+  if (!validate()) return;
+  const country  = document.getElementById('country').value.trim();
+  const city     = document.getElementById('city').value.trim();
+  const arrDate  = document.getElementById('arr-date').value;
+  const arrTime  = document.getElementById('arr-time').value || '12:00';
+  const depDate  = document.getElementById('dep-date').value;
+  const depTime  = document.getElementById('dep-time').value || '12:00';
+  hideGenError();
+  setScreen('loading');
+  try {
+    const { system, user } = buildMessages(country, city, arrDate, arrTime, depDate, depTime);
+    const raw   = await callClaude(system, user);
+    const trip  = parseJSON(raw);
+    tripData    = trip;
+    applyTheme(trip.theme || {});
+    renderItinerary(trip);
+    setScreen('output');
+    updateShareHash();
+  } catch(e) {
     setScreen('form');
-    hideError();
-    document.getElementById('days-container').innerHTML = '';
+    showGenError(e.message || 'Something went wrong. Please try again.');
   }
+}
 
-  // ── SCREENS ──
-  function setScreen(name) {
-    document.getElementById('form-section').style.display    = name === 'form'    ? 'block' : 'none';
-    document.getElementById('loading-section').style.display = name === 'loading' ? 'block' : 'none';
-    document.getElementById('output-section').style.display  = name === 'output'  ? 'block' : 'none';
-  }
-
-  function showError(msg) {
-    const el = document.getElementById('form-error');
-    document.getElementById('form-error-msg').textContent = msg;
-    el.classList.add('visible');
-  }
-  function hideError() {
-    document.getElementById('form-error').classList.remove('visible');
-  }
-
-  // ── RENDER ──
-  function renderItinerary(trip) {
-    document.getElementById('out-destination').textContent = trip.destination;
-    document.getElementById('out-summary').textContent     = trip.summary || '';
-
-    const container = document.getElementById('days-container');
-    container.innerHTML = '';
-
-    (trip.days || []).forEach(day => {
-      container.appendChild(buildDayCard(day));
-    });
-
-    document.getElementById('output-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  const TYPE_ICONS = {
-    activity: '🎯', monument: '🏛', leisure: '🌅', food: '🍽', default: '📍'
-  };
-
-  function buildDayCard(day) {
-    const card = el('div', 'day-card');
-
-    // Header
-    const hdr = el('div', 'day-header');
-    const lbl = el('span', 'day-label'); lbl.textContent = day.label || day.date;
-    const dt  = el('span', 'day-date');  dt.textContent  = formatDate(day.date);
-    hdr.appendChild(lbl); hdr.appendChild(dt);
-    card.appendChild(hdr);
-
-    // Slots
-    if (day.morning)   card.appendChild(activitySlot('Morning',   day.morning));
-    if (day.lunch)     card.appendChild(restaurantSlot('Lunch',   day.lunch));
-    if (day.afternoon) card.appendChild(activitySlot('Afternoon', day.afternoon));
-    if (day.dinner)    card.appendChild(restaurantSlot('Dinner',  day.dinner));
-    if (day.evening && day.evening.title) card.appendChild(eveningSlot(day.evening));
-
-    return card;
-  }
-
-  function activitySlot(timeLabel, data) {
-    const type  = (data.type || 'activity').toLowerCase();
-    const icon  = TYPE_ICONS[type] || TYPE_ICONS.default;
-    const badge = `<span class="badge badge-${type}">${type}</span>`;
-
-    const s = el('div', 'slot');
-    s.innerHTML = `
-      <div class="slot-icon ${type}">${icon}</div>
-      <div class="slot-body">
-        <div class="slot-time">${timeLabel}</div>
-        <div class="slot-title">${esc(data.title)}${badge}</div>
-        <div class="slot-desc">${esc(data.description || '')}</div>
-      </div>`;
-    return s;
-  }
-
-  function restaurantSlot(timeLabel, data) {
-    const s = el('div', 'slot restaurant-slot');
-    s.innerHTML = `
-      <div class="slot-icon restaurant">🍽</div>
-      <div class="slot-body">
-        <div class="slot-time">${timeLabel}</div>
-        <div class="slot-title">${esc(data.name)}</div>
-        <div class="slot-desc">${esc(data.cuisine || '')}</div>
-        ${data.tip ? `<div class="tip-callout">💡 ${esc(data.tip)}</div>` : ''}
-      </div>`;
-    return s;
-  }
-
-  function eveningSlot(data) {
-    const s = el('div', 'slot');
-    s.innerHTML = `
-      <div class="slot-icon evening-icon">🌙</div>
-      <div class="slot-body">
-        <div class="slot-time">Evening</div>
-        <div class="slot-title">${esc(data.title)}</div>
-        <div class="slot-desc">${esc(data.description || '')}</div>
-      </div>`;
-    return s;
-  }
-
-  // ── HELPERS ──
-  function el(tag, cls) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    return e;
-  }
-
-  function esc(str) {
-    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function formatDate(str) {
-    if (!str) return '';
-    try {
-      return new Date(str + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-    } catch { return str; }
-  }
-
-  // init screen state
+function reset() {
   setScreen('form');
+  hideGenError();
+  tripData = null;
+  document.getElementById('days-container').innerHTML = '';
+  document.getElementById('budget-card').innerHTML = '';
+  document.getElementById('out-flag').textContent = '';
+  document.getElementById('out-dest').textContent = '';
+  document.getElementById('out-summary').textContent = '';
+  document.getElementById('out-vibe').textContent = '';
+  if (leafMap) { leafMap.remove(); leafMap = null; }
+  closeMap();
+  window.location.hash = '';
+  document.body.style.background = '';
+  document.documentElement.style.setProperty('--tp', '#a78bfa');
+  document.documentElement.style.setProperty('--ts', '#60a5fa');
+  document.getElementById('btn-share').classList.add('hidden');
+  document.getElementById('btn-print').classList.add('hidden');
+}
+
+// ── SCREENS ──
+function setScreen(s) {
+  document.getElementById('form-section').style.display    = s==='form'    ? 'block':'none';
+  document.getElementById('loading-section').style.display = s==='loading' ? 'block':'none';
+  document.getElementById('output-section').style.display  = s==='output'  ? 'block':'none';
+  document.getElementById('btn-share').classList.toggle('hidden', s!=='output');
+  document.getElementById('btn-print').classList.toggle('hidden', s!=='output');
+}
+function showGenError(m) {
+  document.getElementById('form-error-msg').textContent = m;
+  document.getElementById('form-error').classList.add('show');
+}
+function hideGenError() { document.getElementById('form-error').classList.remove('show'); }
+
+// ── SHARE LINK ──
+function updateShareHash() {
+  if (!tripData) return;
+  try {
+    window.location.hash = btoa(encodeURIComponent(JSON.stringify(tripData)));
+  } catch(_) {}
+}
+
+function copyShareLink() {
+  updateShareHash();
+  navigator.clipboard.writeText(window.location.href)
+    .then(() => toast('Link copied to clipboard!'))
+    .catch(() => toast('Copy: ' + window.location.href));
+}
+
+// ── MAP ──
+function toggleMap() {
+  mapOpen = !mapOpen;
+  const btn = document.getElementById('map-toggle');
+  const box = document.getElementById('map-container');
+  btn.classList.toggle('open', mapOpen);
+  box.classList.toggle('open', mapOpen);
+  btn.querySelector('span').textContent = mapOpen ? '🗺 Hide map' : '🗺 Show map';
+  if (mapOpen && leafMap) {
+    setTimeout(() => leafMap.invalidateSize(), 50);
+  }
+}
+function closeMap() {
+  mapOpen = false;
+  document.getElementById('map-toggle').classList.remove('open');
+  document.getElementById('map-container').classList.remove('open');
+  document.getElementById('map-toggle').querySelector('span').textContent = '🗺 Show map';
+}
+
+function buildMap(days) {
+  if (leafMap) { leafMap.remove(); leafMap = null; }
+  const points = [];
+  days.forEach((day, di) => {
+    ['morning','lunch','afternoon','dinner'].forEach(slot => {
+      const s = day[slot];
+      if (s && s.lat && s.lng && Math.abs(s.lat) > 0.01) {
+        points.push({ lat: s.lat, lng: s.lng, label: s.title || s.name || slot, day: di+1, slot });
+      }
+    });
+  });
+  if (!points.length) {
+    document.querySelector('.map-section').style.display = 'none';
+    return;
+  }
+  document.querySelector('.map-section').style.display = '';
+  leafMap = L.map('map', { zoomControl: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>'
+  }).addTo(leafMap);
+
+  const palette = ['#a78bfa','#60a5fa','#f6ad55','#68d391','#fc8181','#f472b6','#34d399'];
+  points.forEach(p => {
+    const color = palette[(p.day - 1) % palette.length];
+    L.circleMarker([p.lat, p.lng], {
+      radius: 9, fillColor: color, color: '#fff', weight: 2, fillOpacity: .9
+    }).addTo(leafMap).bindPopup(`<b>${p.label}</b><br><small style="color:#666">Day ${p.day}</small>`);
+  });
+  const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+  leafMap.fitBounds(bounds, { padding: [40, 40] });
+}
+
+// ── BUDGET ──
+function renderBudget(budget, nights) {
+  if (!budget) { document.getElementById('budget-card').innerHTML = ''; return; }
+  const sym   = budget.symbol || '';
+  const days  = nights + 1;
+  const pd    = budget.per_day || {};
+  const fmtPD = v => v ? `${sym}${v}/day` : '–';
+  const fmtTot= v => v ? `${sym}${v * days} total` : '';
+  const tips  = (budget.tips || []).map(t => `<li>${esc(t)}</li>`).join('');
+
+  document.getElementById('budget-card').innerHTML = `
+    <div class="budget-title">💰 Estimated Budget — ${esc(budget.currency || '')}</div>
+    <div class="budget-tiers">
+      <div class="budget-tier budget">
+        <div class="budget-tier-name">Budget</div>
+        <div class="budget-tier-daily">${fmtPD(pd.budget)}</div>
+        <div class="budget-tier-total">${fmtTot(pd.budget)}</div>
+      </div>
+      <div class="budget-tier mid">
+        <div class="budget-tier-name">Mid-range</div>
+        <div class="budget-tier-daily">${fmtPD(pd.mid)}</div>
+        <div class="budget-tier-total">${fmtTot(pd.mid)}</div>
+      </div>
+      <div class="budget-tier luxury">
+        <div class="budget-tier-name">Luxury</div>
+        <div class="budget-tier-daily">${fmtPD(pd.luxury)}</div>
+        <div class="budget-tier-total">${fmtTot(pd.luxury)}</div>
+      </div>
+    </div>
+    ${tips ? `<div class="budget-tips"><div class="budget-tips-label">Money tips</div><ul>${tips}</ul></div>` : ''}
+  `;
+}
+
+// ── RENDER ──
+function renderItinerary(trip) {
+  document.getElementById('out-flag').textContent    = trip.theme?.flag    || '';
+  document.getElementById('out-vibe').textContent    = trip.theme?.vibe    || '';
+  document.getElementById('out-dest').textContent    = trip.destination    || '';
+  document.getElementById('out-summary').textContent = trip.summary        || '';
+
+  const nights = (trip.days || []).length - 1;
+  renderBudget(trip.budget, nights);
+
+  const container = document.getElementById('days-container');
+  container.innerHTML = '';
+  (trip.days || []).forEach((day, di) => container.appendChild(buildDayCard(day, di)));
+
+  buildMap(trip.days || []);
+  document.getElementById('output-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── DAY CARDS ──
+const TYPE_ICONS = { activity:'🎯', monument:'🏛', leisure:'🌅', food:'🍽', default:'📍' };
+
+function buildDayCard(day, di) {
+  const card = mk('div','day-card');
+  const hdr  = mk('div','day-header');
+  const lbl  = mk('span','day-label'); lbl.textContent = day.label || day.date;
+  const dt   = mk('span','day-date');  dt.textContent  = fmtDate(day.date);
+  hdr.append(lbl, dt);
+  card.appendChild(hdr);
+  if (day.morning)                  card.appendChild(actSlot(day.morning,   'morning',   di, 'Morning'));
+  if (day.lunch)                    card.appendChild(restSlot(day.lunch,    'lunch',     di, 'Lunch'));
+  if (day.afternoon)                card.appendChild(actSlot(day.afternoon, 'afternoon', di, 'Afternoon'));
+  if (day.dinner)                   card.appendChild(restSlot(day.dinner,   'dinner',    di, 'Dinner'));
+  if (day.evening?.title)           card.appendChild(eveSlot(day.evening,   'evening',   di));
+  return card;
+}
+
+function actSlot(data, slotKey, di, timeLabel) {
+  const type  = (data.type || 'activity').toLowerCase();
+  const icon  = TYPE_ICONS[type] || TYPE_ICONS.default;
+  const wrap  = mk('div','slot');
+  wrap.dataset.di   = di;
+  wrap.dataset.slot = slotKey;
+  wrap.innerHTML = `
+    <div class="slot-icon si-${type}">${icon}</div>
+    <div class="slot-body">
+      <div class="slot-time">${timeLabel}</div>
+      <div class="slot-title">${esc(data.title)}<span class="badge b-${type}">${type}</span></div>
+      <div class="slot-desc">${esc(data.description||'')}</div>
+    </div>
+    <button class="edit-btn" onclick="openEdit(this)" title="Edit">✏</button>`;
+  wrap.appendChild(actEditForm(data, slotKey, di));
+  return wrap;
+}
+
+function restSlot(data, slotKey, di, timeLabel) {
+  const wrap = mk('div','slot');
+  wrap.dataset.di   = di;
+  wrap.dataset.slot = slotKey;
+  wrap.innerHTML = `
+    <div class="slot-icon si-rest">🍽</div>
+    <div class="slot-body">
+      <div class="slot-time">${timeLabel}</div>
+      <div class="slot-title rest-title">${esc(data.name)}</div>
+      <div class="slot-desc">${esc(data.cuisine||'')}</div>
+      ${data.tip ? `<div class="tip-callout">💡 ${esc(data.tip)}</div>` : ''}
+    </div>
+    <button class="edit-btn" onclick="openEdit(this)" title="Edit">✏</button>`;
+  wrap.appendChild(restEditForm(data, slotKey, di));
+  return wrap;
+}
+
+function eveSlot(data, slotKey, di) {
+  const wrap = mk('div','slot');
+  wrap.dataset.di   = di;
+  wrap.dataset.slot = slotKey;
+  wrap.innerHTML = `
+    <div class="slot-icon si-eve">🌙</div>
+    <div class="slot-body">
+      <div class="slot-time">Evening</div>
+      <div class="slot-title">${esc(data.title)}</div>
+      <div class="slot-desc">${esc(data.description||'')}</div>
+    </div>
+    <button class="edit-btn" onclick="openEdit(this)" title="Edit">✏</button>`;
+  wrap.appendChild(eveEditForm(data, slotKey, di));
+  return wrap;
+}
+
+// ── EDIT FORMS ──
+function actEditForm(data, slotKey, di) {
+  const f = mk('div','edit-form');
+  f.innerHTML = `
+    <div class="edit-row"><label>Title</label>
+      <input type="text" data-field="title" value="${esc(data.title||'')}" /></div>
+    <div class="edit-row"><label>Description</label>
+      <textarea data-field="description">${esc(data.description||'')}</textarea></div>
+    <div class="edit-actions">
+      <button class="btn btn-primary btn-sm" onclick="saveEdit(this,${di},'${slotKey}','act')">Save</button>
+      <button class="btn btn-ghost btn-sm"   onclick="cancelEdit(this)">Cancel</button>
+    </div>`;
+  return f;
+}
+
+function restEditForm(data, slotKey, di) {
+  const f = mk('div','edit-form');
+  f.innerHTML = `
+    <div class="edit-row"><label>Restaurant name</label>
+      <input type="text" data-field="name" value="${esc(data.name||'')}" /></div>
+    <div class="edit-row"><label>Cuisine</label>
+      <input type="text" data-field="cuisine" value="${esc(data.cuisine||'')}" /></div>
+    <div class="edit-row"><label>Insider tip</label>
+      <input type="text" data-field="tip" value="${esc(data.tip||'')}" /></div>
+    <div class="edit-actions">
+      <button class="btn btn-primary btn-sm" onclick="saveEdit(this,${di},'${slotKey}','rest')">Save</button>
+      <button class="btn btn-ghost btn-sm"   onclick="cancelEdit(this)">Cancel</button>
+    </div>`;
+  return f;
+}
+
+function eveEditForm(data, slotKey, di) {
+  const f = mk('div','edit-form');
+  f.innerHTML = `
+    <div class="edit-row"><label>Title</label>
+      <input type="text" data-field="title" value="${esc(data.title||'')}" /></div>
+    <div class="edit-row"><label>Description</label>
+      <textarea data-field="description">${esc(data.description||'')}</textarea></div>
+    <div class="edit-actions">
+      <button class="btn btn-primary btn-sm" onclick="saveEdit(this,${di},'${slotKey}','act')">Save</button>
+      <button class="btn btn-ghost btn-sm"   onclick="cancelEdit(this)">Cancel</button>
+    </div>`;
+  return f;
+}
+
+function openEdit(btn) {
+  const slot = btn.closest('.slot');
+  const form = slot.querySelector('.edit-form');
+  const isOpen = form.classList.contains('open');
+  // Close all open edit forms
+  document.querySelectorAll('.edit-form.open').forEach(f => f.classList.remove('open'));
+  if (!isOpen) form.classList.add('open');
+}
+
+function cancelEdit(btn) {
+  btn.closest('.edit-form').classList.remove('open');
+}
+
+function saveEdit(btn, di, slotKey, kind) {
+  const form    = btn.closest('.edit-form');
+  const slot    = form.previousElementSibling ? form.closest('.slot') : form.parentElement;
+  const slotDiv = btn.closest('.slot');
+  const fields  = {};
+  form.querySelectorAll('[data-field]').forEach(el => {
+    fields[el.dataset.field] = el.value;
+  });
+
+  // Update tripData
+  if (!tripData?.days?.[di]) return;
+  const target = tripData.days[di][slotKey];
+  Object.assign(target, fields);
+  updateShareHash();
+
+  // Re-render just this slot
+  const timeLabels = { morning:'Morning', lunch:'Lunch', afternoon:'Afternoon', dinner:'Dinner' };
+  let newSlot;
+  if (kind === 'rest') {
+    newSlot = restSlot(target, slotKey, di, timeLabels[slotKey] || slotKey);
+  } else {
+    newSlot = slotKey === 'evening'
+      ? eveSlot(target, slotKey, di)
+      : actSlot(target, slotKey, di, timeLabels[slotKey] || slotKey);
+  }
+  slotDiv.replaceWith(newSlot);
+  toast('Saved!');
+}
+
+// ── TOAST ──
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── HELPERS ──
+function mk(tag, cls) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(s) {
+  if (!s) return '';
+  try { return new Date(s+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}); }
+  catch { return s; }
+}
+
+setScreen('form');
 </script>
 </body>
 </html>
