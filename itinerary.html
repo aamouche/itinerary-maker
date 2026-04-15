@@ -122,13 +122,15 @@
       display: block; font-size: .75rem; color: var(--muted);
       margin-bottom: .35rem; letter-spacing: .6px; text-transform: uppercase;
     }
-    input[type="text"], input[type="date"], input[type="time"] {
+    input[type="text"], input[type="date"], input[type="time"], select {
       width: 100%; background: var(--surface);
       border: 1px solid var(--border); border-radius: 10px;
       padding: .7rem 1rem; color: var(--text); font-size: .95rem;
       outline: none; transition: border-color .2s;
       appearance: none; -webkit-appearance: none;
     }
+    select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23718096' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 1rem center; padding-right: 2.5rem; }
+    select option { background: #1e1e2e; }
     input[type="date"]::-webkit-calendar-picker-indicator,
     input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
     input:focus { border-color: var(--tp); }
@@ -190,17 +192,20 @@
       font-size: .75rem; text-transform: uppercase; letter-spacing: 1px;
       color: var(--muted); margin-bottom: 1rem;
     }
-    .budget-tiers { display: grid; grid-template-columns: repeat(3,1fr); gap: .75rem; margin-bottom: 1rem; }
-    .budget-tier {
+    .budget-selected {
       background: var(--bg); border: 1px solid var(--border);
-      border-radius: 12px; padding: .8rem; text-align: center;
+      border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 1rem;
     }
-    .budget-tier-name { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: .3rem; }
-    .budget-tier-daily { font-size: 1.3rem; font-weight: 700; }
-    .budget-tier-total { font-size: .75rem; color: var(--muted); margin-top: .15rem; }
-    .budget-tier.mid .budget-tier-daily  { color: var(--tp); }
-    .budget-tier.budget .budget-tier-daily { color: var(--green); }
-    .budget-tier.luxury .budget-tier-daily { color: var(--amber); }
+    .bud-badge {
+      display: inline-block; font-size: .72rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px;
+      padding: .2rem .7rem; border-radius: 999px; margin-bottom: .5rem;
+    }
+    .bud-range { font-size: .82rem; color: var(--muted); margin-bottom: .7rem; }
+    .bud-estimates { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .bud-est { display: flex; flex-direction: column; gap: .1rem; }
+    .bud-est-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+    .bud-est-val { font-size: 1.4rem; font-weight: 800; }
     .budget-tips { border-top: 1px solid var(--border); padding-top: .85rem; }
     .budget-tips-label { font-size: .7rem; color: var(--muted); margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .8px; }
     .budget-tips ul { list-style: none; display: flex; flex-direction: column; gap: .3rem; }
@@ -396,6 +401,15 @@
         <label for="city">City or Region <span style="font-size:.72rem;text-transform:none;color:var(--muted)">(optional)</span></label>
         <input type="text" id="city" placeholder="e.g. Paris, Kyoto, Marrakech" />
       </div>
+      <div class="form-full">
+        <label for="budget-tier">Daily Budget *</label>
+        <select id="budget-tier">
+          <option value="low">💚 Low Budget — $0 to $50/day (hostels, street food, free attractions)</option>
+          <option value="medium" selected>💛 Medium Budget — $50 to $100/day (mid-range hotels &amp; restaurants)</option>
+          <option value="high">🧡 High Budget — $100 to $300/day (nice hotels, good restaurants, premium experiences)</option>
+          <option value="unlimited">💜 Unlimited — $300+/day (luxury hotels, fine dining, private tours)</option>
+        </select>
+      </div>
       <div>
         <label for="arr-date">Arrival Date *</label>
         <input type="date" id="arr-date" />
@@ -553,9 +567,17 @@ function showErr(id) { document.getElementById(id).classList.add('show'); }
 function markErr(id) { document.getElementById(id).classList.add('err'); }
 
 // ── PROMPT ──
-function buildMessages(country, city, arrDate, arrTime, depDate, depTime) {
+const BUDGET_META = {
+  low:       { label: 'Low Budget',       range: '$0–$50/day',       color: '#68d391', desc: 'hostels or budget guesthouses, street food and local markets, free or low-cost attractions, public transport only. Avoid expensive tourist traps.' },
+  medium:    { label: 'Medium Budget',    range: '$50–$100/day',     color: '#f6ad55', desc: 'mid-range hotels or B&Bs, casual sit-down restaurants, mix of paid and free attractions, occasional taxis.' },
+  high:      { label: 'High Budget',      range: '$100–$300/day',    color: '#a78bfa', desc: 'nice hotels or boutique stays, good restaurants with a full dining experience, premium attractions and experiences, comfortable transport.' },
+  unlimited: { label: 'Unlimited Budget', range: '$300+/day',        color: '#60a5fa', desc: 'luxury 5-star hotels, fine dining and Michelin-starred restaurants, exclusive private tours, first-class transport and unique splurge experiences.' }
+};
+
+function buildMessages(country, city, arrDate, arrTime, depDate, depTime, budgetTier) {
   const dest   = city ? `${city}, ${country}` : country;
   const nights = daysBetween(arrDate, depDate);
+  const bm     = BUDGET_META[budgetTier] || BUDGET_META.medium;
 
   const system = `You are an expert travel planner. Respond ONLY with valid JSON — no markdown, no code fences, no explanation. Use this exact schema:
 {
@@ -569,10 +591,10 @@ function buildMessages(country, city, arrDate, arrTime, depDate, depTime) {
     "vibe":      "2-4 word evocative description e.g. Romantic & Sophisticated"
   },
   "budget": {
-    "currency": "currency name",
-    "symbol":   "€",
-    "per_day":  { "budget": 60, "mid": 130, "luxury": 300 },
-    "tips":     ["tip1","tip2","tip3"]
+    "currency": "local currency name",
+    "symbol":   "currency symbol",
+    "estimated_daily": 75,
+    "tips":     ["3 practical money tips specific to this budget tier and destination"]
   },
   "days": [
     {
@@ -587,7 +609,9 @@ function buildMessages(country, city, arrDate, arrTime, depDate, depTime) {
   ]
 }
 Rules:
-- Use REAL popular tourist restaurants, monuments and attractions with accurate coordinates.
+- BUDGET TIER: ${bm.label} (${bm.range}). ALL recommendations MUST match this tier: ${bm.desc}
+- budget.estimated_daily should be a realistic single number within the tier's range for this destination.
+- Use REAL popular restaurants, monuments and attractions with accurate coordinates.
 - theme.primary/secondary/accent must be bright/vibrant and readable on a very dark background.
 - Arrival day morning: if arriving after 14:00 use "Arrival & Hotel Check-in" for morning.
 - Departure day: omit afternoon if departing before 12:00; omit lunch too if before 10:00.
@@ -595,7 +619,7 @@ Rules:
 - Descriptions 1-2 sentences, enthusiastic. Restaurant tips: best dish, booking advice, or timing.
 - lat/lng must be accurate real-world coordinates for each location.`;
 
-  const user = `Plan a ${nights}-night trip to ${dest}. Arrival: ${arrDate} at ${arrTime}. Departure: ${depDate} at ${depTime}. Return only the JSON.`;
+  const user = `Plan a ${nights}-night trip to ${dest}. Arrival: ${arrDate} at ${arrTime}. Departure: ${depDate} at ${depTime}. Budget: ${bm.label} (${bm.range}). Return only the JSON.`;
   return { system, user };
 }
 
@@ -639,18 +663,20 @@ function parseJSON(raw) {
 async function generate() {
   if (!apiKey) { showKeyModal(false); return; }
   if (!validate()) return;
-  const country  = document.getElementById('country').value.trim();
-  const city     = document.getElementById('city').value.trim();
-  const arrDate  = document.getElementById('arr-date').value;
-  const arrTime  = document.getElementById('arr-time').value || '12:00';
-  const depDate  = document.getElementById('dep-date').value;
-  const depTime  = document.getElementById('dep-time').value || '12:00';
+  const country    = document.getElementById('country').value.trim();
+  const city       = document.getElementById('city').value.trim();
+  const arrDate    = document.getElementById('arr-date').value;
+  const arrTime    = document.getElementById('arr-time').value || '12:00';
+  const depDate    = document.getElementById('dep-date').value;
+  const depTime    = document.getElementById('dep-time').value || '12:00';
+  const budgetTier = document.getElementById('budget-tier').value;
   hideGenError();
   setScreen('loading');
   try {
-    const { system, user } = buildMessages(country, city, arrDate, arrTime, depDate, depTime);
+    const { system, user } = buildMessages(country, city, arrDate, arrTime, depDate, depTime, budgetTier);
     const raw   = await callClaude(system, user);
     const trip  = parseJSON(raw);
+    trip.budgetTier = budgetTier;
     tripData    = trip;
     applyTheme(trip.theme || {});
     renderItinerary(trip);
@@ -763,32 +789,23 @@ function buildMap(days) {
 }
 
 // ── BUDGET ──
-function renderBudget(budget, nights) {
+function renderBudget(budget, nights, budgetTier) {
   if (!budget) { document.getElementById('budget-card').innerHTML = ''; return; }
-  const sym   = budget.symbol || '';
-  const days  = nights + 1;
-  const pd    = budget.per_day || {};
-  const fmtPD = v => v ? `${sym}${v}/day` : '–';
-  const fmtTot= v => v ? `${sym}${v * days} total` : '';
-  const tips  = (budget.tips || []).map(t => `<li>${esc(t)}</li>`).join('');
+  const bm      = BUDGET_META[budgetTier] || BUDGET_META.medium;
+  const sym     = budget.symbol || '';
+  const days    = nights + 1;
+  const daily   = budget.estimated_daily;
+  const total   = daily ? daily * days : null;
+  const tips    = (budget.tips || []).map(t => `<li>${esc(t)}</li>`).join('');
 
   document.getElementById('budget-card').innerHTML = `
-    <div class="budget-title">💰 Estimated Budget — ${esc(budget.currency || '')}</div>
-    <div class="budget-tiers">
-      <div class="budget-tier budget">
-        <div class="budget-tier-name">Budget</div>
-        <div class="budget-tier-daily">${fmtPD(pd.budget)}</div>
-        <div class="budget-tier-total">${fmtTot(pd.budget)}</div>
-      </div>
-      <div class="budget-tier mid">
-        <div class="budget-tier-name">Mid-range</div>
-        <div class="budget-tier-daily">${fmtPD(pd.mid)}</div>
-        <div class="budget-tier-total">${fmtTot(pd.mid)}</div>
-      </div>
-      <div class="budget-tier luxury">
-        <div class="budget-tier-name">Luxury</div>
-        <div class="budget-tier-daily">${fmtPD(pd.luxury)}</div>
-        <div class="budget-tier-total">${fmtTot(pd.luxury)}</div>
+    <div class="budget-title">💰 Budget Overview — ${esc(budget.currency || '')}</div>
+    <div class="budget-selected" style="border-color:${bm.color}20">
+      <div class="bud-badge" style="background:${bm.color}20;color:${bm.color}">${esc(bm.label)}</div>
+      <div class="bud-range">${esc(bm.range)}</div>
+      <div class="bud-estimates">
+        ${daily ? `<div class="bud-est"><span class="bud-est-label">Est. per day</span><span class="bud-est-val" style="color:${bm.color}">${sym}${daily}</span></div>` : ''}
+        ${total ? `<div class="bud-est"><span class="bud-est-label">Est. total (${days} days)</span><span class="bud-est-val" style="color:${bm.color}">${sym}${total}</span></div>` : ''}
       </div>
     </div>
     ${tips ? `<div class="budget-tips"><div class="budget-tips-label">Money tips</div><ul>${tips}</ul></div>` : ''}
@@ -803,7 +820,7 @@ function renderItinerary(trip) {
   document.getElementById('out-summary').textContent = trip.summary        || '';
 
   const nights = (trip.days || []).length - 1;
-  renderBudget(trip.budget, nights);
+  renderBudget(trip.budget, nights, trip.budgetTier || 'medium');
 
   const container = document.getElementById('days-container');
   container.innerHTML = '';
