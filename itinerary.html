@@ -131,6 +131,26 @@
     }
     select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23718096' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 1rem center; padding-right: 2.5rem; }
     select option { background: #1e1e2e; }
+
+    /* ── TRIP TYPE CHIPS ── */
+    .chip-group { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .chip {
+      display: flex; align-items: center; gap: .4rem;
+      padding: .45rem .9rem; border-radius: 999px;
+      border: 1.5px solid var(--border);
+      background: var(--surface); color: var(--sub);
+      font-size: .85rem; font-weight: 600; cursor: pointer;
+      transition: border-color .15s, background .15s, color .15s, transform .1s;
+      user-select: none;
+    }
+    .chip:hover { border-color: var(--tp); color: var(--tp); }
+    .chip.active {
+      border-color: var(--tp);
+      background: color-mix(in srgb, var(--tp) 15%, transparent);
+      color: var(--tp);
+    }
+    .chip:active { transform: scale(.96); }
+    .chip-hint { font-size: .75rem; color: var(--muted); margin-top: .4rem; }
     input[type="date"]::-webkit-calendar-picker-indicator,
     input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
     input:focus { border-color: var(--tp); }
@@ -402,6 +422,17 @@
         <input type="text" id="city" placeholder="e.g. Paris, Kyoto, Marrakech" />
       </div>
       <div class="form-full">
+        <label>Trip Type <span style="font-size:.72rem;text-transform:none;color:var(--muted)">(select one or more)</span></label>
+        <div class="chip-group" id="trip-type-group">
+          <div class="chip active" data-type="solo">🧍 Solo</div>
+          <div class="chip" data-type="romantic">💑 Romantic</div>
+          <div class="chip" data-type="historical">🏛 Historical</div>
+          <div class="chip" data-type="family">👨‍👩‍👧 Family</div>
+          <div class="chip" data-type="active">🏃 Active</div>
+        </div>
+        <div class="chip-hint" id="trip-type-err" style="color:var(--red);display:none">Please select at least one trip type.</div>
+      </div>
+      <div class="form-full">
         <label for="budget-tier">Daily Budget *</label>
         <select id="budget-tier">
           <option value="low">💚 Low Budget — $0 to $50/day (hostels, street food, free attractions)</option>
@@ -453,6 +484,7 @@
       <div class="trip-hero-vibe" id="out-vibe"></div>
       <div class="trip-hero-dest" id="out-dest"></div>
       <div class="trip-hero-summary" id="out-summary"></div>
+      <div id="out-type-pills" style="display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.9rem"></div>
     </div>
 
     <!-- Budget -->
@@ -523,6 +555,22 @@ function saveKey() {
 }
 document.getElementById('key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveKey(); });
 
+// ── TRIP TYPE CHIPS ──
+document.getElementById('trip-type-group').addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  chip.classList.toggle('active');
+  // Ensure at least one stays active
+  const active = document.querySelectorAll('#trip-type-group .chip.active');
+  if (active.length === 0) chip.classList.add('active');
+  document.getElementById('trip-type-err').style.display = 'none';
+});
+
+function getSelectedTripTypes() {
+  return [...document.querySelectorAll('#trip-type-group .chip.active')]
+    .map(c => c.dataset.type);
+}
+
 // ── THEME ──
 function applyTheme(theme) {
   if (!theme || !theme.primary) return;
@@ -567,6 +615,14 @@ function showErr(id) { document.getElementById(id).classList.add('show'); }
 function markErr(id) { document.getElementById(id).classList.add('err'); }
 
 // ── PROMPT ──
+const TRIP_META = {
+  solo:       { label: 'Solo',       emoji: '🧍', desc: 'solo traveller — prioritise independent, self-paced activities; solo-friendly restaurants and bars where eating alone is comfortable; social spots like rooftop bars or communal eateries; easy navigation tips; optional guided group tours for meeting people.' },
+  romantic:   { label: 'Romantic',   emoji: '💑', desc: 'romantic couple — intimate candlelit restaurants, sunset viewpoints, couples experiences, scenic walks, rooftop bars, boat rides, spa visits, and hidden gems away from crowds.' },
+  historical: { label: 'Historical', emoji: '🏛', desc: 'history enthusiast — prioritise museums, ancient monuments, archaeological sites, UNESCO heritage sites, guided historical walking tours, and culturally significant landmarks. Include historical context in descriptions.' },
+  family:     { label: 'Family',     emoji: '👨‍👩‍👧', desc: 'family with children — child-friendly activities, interactive museums, parks, zoos, theme parks, and restaurants with kids menus. Avoid very long walks; keep pace relaxed. Include tips about stroller access or age suitability.' },
+  active:     { label: 'Active',     emoji: '🏃', desc: 'active traveller — hiking trails, cycling routes, water sports, rock climbing, surfing, kayaking, outdoor adventure activities, and sports. Include difficulty level and any equipment needed in descriptions.' }
+};
+
 const BUDGET_META = {
   low:       { label: 'Low Budget',       range: '$0–$50/day',       color: '#68d391', desc: 'hostels or budget guesthouses, street food and local markets, free or low-cost attractions, public transport only. Avoid expensive tourist traps.' },
   medium:    { label: 'Medium Budget',    range: '$50–$100/day',     color: '#f6ad55', desc: 'mid-range hotels or B&Bs, casual sit-down restaurants, mix of paid and free attractions, occasional taxis.' },
@@ -574,10 +630,12 @@ const BUDGET_META = {
   unlimited: { label: 'Unlimited Budget', range: '$300+/day',        color: '#60a5fa', desc: 'luxury 5-star hotels, fine dining and Michelin-starred restaurants, exclusive private tours, first-class transport and unique splurge experiences.' }
 };
 
-function buildMessages(country, city, arrDate, arrTime, depDate, depTime, budgetTier) {
-  const dest   = city ? `${city}, ${country}` : country;
-  const nights = daysBetween(arrDate, depDate);
-  const bm     = BUDGET_META[budgetTier] || BUDGET_META.medium;
+function buildMessages(country, city, arrDate, arrTime, depDate, depTime, budgetTier, tripTypes) {
+  const dest      = city ? `${city}, ${country}` : country;
+  const nights    = daysBetween(arrDate, depDate);
+  const bm        = BUDGET_META[budgetTier] || BUDGET_META.medium;
+  const typeDescs = tripTypes.map(t => TRIP_META[t]?.desc).filter(Boolean).join('\n- ');
+  const typeLabels= tripTypes.map(t => TRIP_META[t] ? `${TRIP_META[t].emoji} ${TRIP_META[t].label}` : t).join(', ');
 
   const system = `You are an expert travel planner. Respond ONLY with valid JSON — no markdown, no code fences, no explanation. Use this exact schema:
 {
@@ -610,16 +668,18 @@ function buildMessages(country, city, arrDate, arrTime, depDate, depTime, budget
 }
 Rules:
 - BUDGET TIER: ${bm.label} (${bm.range}). ALL recommendations MUST match this tier: ${bm.desc}
+- TRIP TYPE(S): ${typeLabels}. Tailor every activity, restaurant and experience to suit:
+- ${typeDescs}
 - budget.estimated_daily should be a realistic single number within the tier's range for this destination.
 - Use REAL popular restaurants, monuments and attractions with accurate coordinates.
 - theme.primary/secondary/accent must be bright/vibrant and readable on a very dark background.
 - Arrival day morning: if arriving after 14:00 use "Arrival & Hotel Check-in" for morning.
 - Departure day: omit afternoon if departing before 12:00; omit lunch too if before 10:00.
-- Day labels must have evocative themes e.g. "Day 2 – Art & Café Culture".
+- Day labels must have evocative themes that reflect the trip type(s) e.g. "Day 2 – Ancient Ruins & Local Markets".
 - Descriptions 1-2 sentences, enthusiastic. Restaurant tips: best dish, booking advice, or timing.
 - lat/lng must be accurate real-world coordinates for each location.`;
 
-  const user = `Plan a ${nights}-night trip to ${dest}. Arrival: ${arrDate} at ${arrTime}. Departure: ${depDate} at ${depTime}. Budget: ${bm.label} (${bm.range}). Return only the JSON.`;
+  const user = `Plan a ${nights}-night ${typeLabels} trip to ${dest}. Arrival: ${arrDate} at ${arrTime}. Departure: ${depDate} at ${depTime}. Budget: ${bm.label} (${bm.range}). Return only the JSON.`;
   return { system, user };
 }
 
@@ -670,13 +730,20 @@ async function generate() {
   const depDate    = document.getElementById('dep-date').value;
   const depTime    = document.getElementById('dep-time').value || '12:00';
   const budgetTier = document.getElementById('budget-tier').value;
+  const tripTypes  = getSelectedTripTypes();
+  if (!tripTypes.length) {
+    document.getElementById('trip-type-err').style.display = 'block';
+    return;
+  }
+  document.getElementById('trip-type-err').style.display = 'none';
   hideGenError();
   setScreen('loading');
   try {
-    const { system, user } = buildMessages(country, city, arrDate, arrTime, depDate, depTime, budgetTier);
+    const { system, user } = buildMessages(country, city, arrDate, arrTime, depDate, depTime, budgetTier, tripTypes);
     const raw   = await callClaude(system, user);
     const trip  = parseJSON(raw);
     trip.budgetTier = budgetTier;
+    trip.tripTypes  = tripTypes;
     tripData    = trip;
     applyTheme(trip.theme || {});
     renderItinerary(trip);
@@ -818,6 +885,16 @@ function renderItinerary(trip) {
   document.getElementById('out-vibe').textContent    = trip.theme?.vibe    || '';
   document.getElementById('out-dest').textContent    = trip.destination    || '';
   document.getElementById('out-summary').textContent = trip.summary        || '';
+  // Trip type pills on hero
+  const pillBox = document.getElementById('out-type-pills');
+  pillBox.innerHTML = '';
+  (trip.tripTypes || []).forEach(t => {
+    const m = TRIP_META[t]; if (!m) return;
+    const p = document.createElement('span');
+    p.textContent = `${m.emoji} ${m.label}`;
+    p.style.cssText = `font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:.2rem .7rem;border-radius:999px;background:color-mix(in srgb,var(--tp) 15%,transparent);color:var(--tp);border:1px solid color-mix(in srgb,var(--tp) 30%,transparent)`;
+    pillBox.appendChild(p);
+  });
 
   const nights = (trip.days || []).length - 1;
   renderBudget(trip.budget, nights, trip.budgetTier || 'medium');
